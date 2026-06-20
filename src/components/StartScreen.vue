@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useGameState } from '@/composables/useGameState'
+import type { DiaryRecord } from '@/types/game'
 
 const router = useRouter()
-const { startGame, tryLoadGame, state } = useGameState()
+const { startGame, tryLoadGame, state, loadDiaryRecords } = useGameState()
 
-const hasSave = state.phase === 'playing' || state.phase === 'breeding'
+const hasSave = computed(() => state.phase === 'playing' || state.phase === 'breeding')
+const diaryRecords = ref<DiaryRecord[]>([])
+const hasDiary = computed(() => diaryRecords.value.length > 0)
 
 onMounted(() => {
   tryLoadGame()
+  diaryRecords.value = loadDiaryRecords()
 })
 
 const handleStart = () => {
@@ -19,6 +23,10 @@ const handleStart = () => {
 
 const handleContinue = () => {
   router.push('/game')
+}
+
+const handleDiary = () => {
+  router.push('/diary')
 }
 </script>
 
@@ -40,6 +48,28 @@ const handleContinue = () => {
           虚拟鸟巢
         </h1>
         <p class="text-forest-light/90 text-xl font-medium">超休闲·养成小游戏</p>
+      </div>
+
+      <div v-if="hasSave" class="glass rounded-3xl p-5 card-shadow animate-pop-in mb-4 border-2 border-amber-400/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="text-4xl">📂</div>
+            <div>
+              <div class="text-amber-200 font-bold text-lg">检测到未完成的游戏</div>
+              <div class="text-white/60 text-sm">
+                第 {{ state.day }} 天 · 存活 {{ state.birds.filter(b => !b.isDead).length }} 只 · 孵化 {{ state.totalHatched }} 只
+              </div>
+            </div>
+          </div>
+          <button
+            class="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl
+                   font-bold btn-3d hover:from-amber-400 hover:to-orange-400 flex items-center gap-2 shrink-0"
+            @click="handleContinue"
+          >
+            <span class="text-xl">▶️</span>
+            继续游戏
+          </button>
+        </div>
       </div>
 
       <div class="glass rounded-3xl p-8 card-shadow animate-pop-in" style="animation-delay: 0.15s">
@@ -103,6 +133,21 @@ const handleContinue = () => {
           >
             <span class="text-xl">🪺</span>
             {{ hasSave ? '开启新的一窝' : '开始孵蛋！' }}
+          </button>
+
+          <button
+            class="px-8 py-4 bg-gradient-to-r from-amber-700 to-orange-800 text-white rounded-2xl
+                   font-bold text-lg btn-3d hover:from-amber-600 hover:to-orange-700 flex items-center justify-center gap-2 relative"
+            @click="handleDiary"
+          >
+            <span class="text-xl">📔</span>
+            守巢日记
+            <span
+              v-if="hasDiary"
+              class="absolute -top-2 -right-2 bg-rose-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold animate-pulse"
+            >
+              {{ diaryRecords.length }}
+            </span>
           </button>
         </div>
 

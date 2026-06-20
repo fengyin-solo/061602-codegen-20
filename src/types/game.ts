@@ -56,6 +56,8 @@ export interface GameState {
   eventLog: { id: string; message: string; type: string; timestamp: number }[]
   score?: GameScore
   selectedBirdId?: string
+  diaryDays: DiaryDay[]
+  currentDiaryDay?: DiaryDay
 }
 
 export interface GameScore {
@@ -74,4 +76,61 @@ export interface WeatherEffect {
   healthMod: number
   awayChance?: number
   sickChance?: number
+}
+
+export type DiaryEventType =
+  | 'hatch'
+  | 'grow'
+  | 'die'
+  | 'bury'
+  | 'away'
+  | 'return'
+  | 'sick'
+  | 'recover'
+  | 'feed'
+  | 'breeding'
+  | 'weather'
+  | 'dayStart'
+  | 'info'
+
+export interface DiaryEvent {
+  id: string
+  day: number
+  timestamp: number
+  type: DiaryEventType
+  message: string
+  birdName?: string
+}
+
+export interface DiaryDayStats {
+  hatched: number
+  grew: number
+  died: number
+  fed: number
+  sickened: number
+  recovered: number
+  awayEvents: number
+  weathers: Weather[]
+}
+
+export interface DiaryDay {
+  day: number
+  startedAt: number
+  endedAt?: number
+  events: DiaryEvent[]
+  stats: DiaryDayStats
+  aliveBirdCount: number
+  totalFoodCollected: number
+}
+
+export interface DiaryRecord {
+  id: string
+  startedAt: number
+  endedAt?: number
+  days: DiaryDay[]
+  finalScore?: GameScore
+  totalDays: number
+  totalHatched: number
+  totalDied: number
+  breedingCount: number
 }

@@ -1,5 +1,5 @@
 import { reactive, computed, watch } from 'vue'
-import type { GameState, Bird, Berry, GrowthStage, Personality, BerryType, Weather, GameScore } from '@/types/game'
+import type { GameState, Bird, Berry, GrowthStage, Personality, BerryType, Weather, GameScore, DiaryDay, DiaryDayStats, DiaryEventType, DiaryRecord } from '@/types/game'
 import {
   ATTR_MIN, ATTR_MAX, DEATH_THRESHOLD,
   STAGE_DURATION, FOOD_NEED_MULTIPLIER,
@@ -10,7 +10,7 @@ import {
   MAX_BREEDING_ROUNDS, BIRD_NAMES,
 } from '@/utils/constants'
 import { randomInt, randomFloat, clamp, randomChoice, generateId, chance } from '@/utils/random'
-import { saveGame, loadGame, clearSave } from '@/utils/storage'
+import { saveGame, loadGame, clearSave, saveDiaryRecord, loadDiaryRecords, clearDiaryRecords } from '@/utils/storage'
 
 const createInitialState = (): GameState => ({
   phase: 'start',
@@ -26,6 +26,7 @@ const createInitialState = (): GameState => ({
   breedingCount: 0,
   maxBreedingRounds: MAX_BREEDING_ROUNDS,
   eventLog: [],
+  diaryDays: [],
 })
 
 const state = reactive<GameState>(createInitialState())
@@ -89,6 +90,95 @@ const addEventLog = (message: string, type: string = 'info') => {
   if (state.eventLog.length > 50) state.eventLog.pop()
 }
 
+const createEmptyDiaryDayStats = (): DiaryDayStats => ({
+  hatched: 0,
+  grew: 0,
+  died: 0,
+  fed: 0,
+  sickened: 0,
+  recovered: 0,
+  awayEvents: 0,
+  weathers: [],
+})
+
+const createDiaryDay = (day: number): DiaryDay => ({
+  day,
+  startedAt: Date.now(),
+  events: [],
+  stats: createEmptyDiaryDayStats(),
+  aliveBirdCount: state.birds.filter(b => !b.isDead).length,
+  totalFoodCollected: 0,
+})
+
+const ensureCurrentDiaryDay = () => {
+  if (!state.currentDiaryDay || state.currentDiaryDay.day !== state.day) {
+    state.currentDiaryDay = createDiaryDay(state.day)
+    if (!state.diaryDays.find(d => d.day === state.day)) {
+      state.diaryDays.push(state.currentDiaryDay)
+    }
+  }
+  return state.currentDiaryDay
+}
+
+const addDiaryEvent = (type: DiaryEventType, message: string, birdName?: string) => {
+  if (state.phase !== 'playing' && state.phase !== 'breeding') return
+  const diaryDay = ensureCurrentDiaryDay()
+  diaryDay.events.push({
+    id: generateId(),
+    day: state.day,
+    timestamp: Date.now(),
+    type,
+    message,
+    birdName,
+  })
+
+  switch (type) {
+    case 'hatch':
+      diaryDay.stats.hatched++
+      break
+    case 'grow':
+      diaryDay.stats.grew++
+      break
+    case 'die':
+      diaryDay.stats.died++
+      break
+    case 'feed':
+      diaryDay.stats.fed++
+      break
+    case 'sick':
+      diaryDay.stats.sickened++
+      break
+    case 'recover':
+      diaryDay.stats.recovered++
+      break
+    case 'away':
+      diaryDay.stats.awayEvents++
+      break
+    case 'weather':
+      if (!diaryDay.stats.weathers.includes(state.currentWeather)) {
+        diaryDay.stats.weathers.push(state.currentWeather)
+      }
+      break
+  }
+}
+
+const finalizeDiaryDay = (diaryDay: DiaryDay) => {
+  diaryDay.endedAt = Date.now()
+  diaryDay.aliveBirdCount = state.birds.filter(b => !b.isDead).length
+}
+
+const buildDiaryRecord = (): DiaryRecord => ({
+  id: generateId(),
+  startedAt: state.diaryDays[0]?.startedAt ?? Date.now(),
+  endedAt: Date.now(),
+  days: state.diaryDays.map(d => ({ ...d })),
+  finalScore: state.score,
+  totalDays: state.day,
+  totalHatched: state.totalHatched,
+  totalDied: state.totalDied,
+  breedingCount: state.breedingCount,
+})
+
 const startGame = () => {
   Object.assign(state, createInitialState())
   usedNames.clear()
@@ -99,6 +189,10 @@ const startGame = () => {
   for (let i = 0; i < eggCount; i++) {
     state.birds.push(createEgg(i))
   }
+
+  state.currentDiaryDay = createDiaryDay(1)
+  state.diaryDays.push(state.currentDiaryDay)
+  addDiaryEvent('dayStart', `第 1 天开始，鸟巢里有 ${eggCount} 颗蛋~`)
 
   addEventLog(`🎉 新的一窝！鸟巢里有 ${eggCount} 颗蛋在等待孵化~`, 'success')
   startGameLoop()
@@ -135,7 +229,13 @@ const updateGame = (deltaMs: number) => {
   state.dayProgress += deltaMs / DAY_DURATION
   if (state.dayProgress >= 1) {
     state.dayProgress -= 1
+    if (state.currentDiaryDay) {
+      finalizeDiaryDay(state.currentDiaryDay)
+    }
     state.day += 1
+    state.currentDiaryDay = createDiaryDay(state.day)
+    state.diaryDays.push(state.currentDiaryDay)
+    addDiaryEvent('dayStart', `第 ${state.day} 天开始了！`)
     addEventLog(`📅 第 ${state.day} 天开始了！`, 'info')
   }
 
@@ -160,10 +260,12 @@ const updateBird = (bird: Bird, deltaMs: number, weatherEffect: ReturnType<typeo
 
   if (bird.isAway && bird.awayUntil && Date.now() >= bird.awayUntil) {
     bird.isAway = false
+    addDiaryEvent('return', `${bird.name} 回巢了~`, bird.name)
     addEventLog(`🏠 ${bird.name} 回巢了~`, 'success')
   }
   if (bird.isSick && bird.sickUntil && Date.now() >= bird.sickUntil) {
     bird.isSick = false
+    addDiaryEvent('recover', `${bird.name} 康复了！`, bird.name)
     addEventLog(`💚 ${bird.name} 康复了！`, 'success')
   }
 
@@ -203,6 +305,7 @@ const updateBird = (bird: Bird, deltaMs: number, weatherEffect: ReturnType<typeo
     if (chance(weatherEffect.awayChance * personalityMod * (deltaMs / 10000))) {
       bird.isAway = true
       bird.awayUntil = Date.now() + randomInt(8000, 20000)
+      addDiaryEvent('away', `${bird.name} 被天气吓跑，暂时离巢了...`, bird.name)
       addEventLog(`💨 ${bird.name} 被天气吓跑，暂时离巢了...`, 'warning')
     }
   }
@@ -212,6 +315,7 @@ const updateBird = (bird: Bird, deltaMs: number, weatherEffect: ReturnType<typeo
     if (chance(weatherEffect.sickChance * personalityMod * (deltaMs / 10000))) {
       bird.isSick = true
       bird.sickUntil = Date.now() + randomInt(10000, 25000)
+      addDiaryEvent('sick', `${bird.name} 生病了，需要好好照顾！`, bird.name)
       addEventLog(`🤒 ${bird.name} 生病了，需要好好照顾！`, 'warning')
     }
   }
@@ -251,6 +355,7 @@ const hatchBird = (bird: Bird) => {
   bird.justHatched = true
   state.totalHatched++
 
+  addDiaryEvent('hatch', `${bird.name} 破壳而出！性格：${bird.personality}`, bird.name)
   addEventLog(`🥳 ${bird.name} 破壳啦！性格：${bird.personality}`, 'success')
 }
 
@@ -262,6 +367,7 @@ const growBird = (bird: Bird) => {
   bird.stageProgress = 0
   bird.justGrew = true
 
+  addDiaryEvent('grow', `${bird.name} 成长为${bird.stage}！`, bird.name)
   addEventLog(`🌟 ${bird.name} 成长为${bird.stage}啦！`, 'success')
 
   if (bird.stage === 'adult') {
@@ -272,6 +378,7 @@ const growBird = (bird: Bird) => {
 const killBird = (bird: Bird) => {
   bird.isDead = true
   state.totalDied++
+  addDiaryEvent('die', `${bird.name} 离开了我们...`, bird.name)
   addEventLog(`💔 ${bird.name} 离开了我们...`, 'danger')
 
   state.birds.filter(b => !b.isDead && b.stage !== 'egg').forEach(survivor => {
@@ -287,6 +394,7 @@ const buryBird = (birdId: string) => {
   if (!bird || !bird.isDead) return
 
   state.birds = state.birds.filter(b => b.id !== birdId)
+  addDiaryEvent('bury', `已将 ${bird.name} 埋葬在树下...`, bird.name)
   addEventLog(`🕊️ 已将 ${bird.name} 埋葬在树下...`, 'info')
 
   state.birds.filter(b => !b.isDead).forEach(survivor => {
@@ -300,6 +408,7 @@ const changeWeather = () => {
   const newWeather = randomChoice(WEATHERS.filter(w => w !== state.currentWeather))
   state.currentWeather = newWeather
   state.nextWeatherChangeAt = Date.now() + WEATHER_CHANGE_INTERVAL + randomInt(-10000, 10000)
+  addDiaryEvent('weather', `天气变为：${newWeather}`)
   addEventLog(`🌤️ 天气变化：${newWeather}`, 'info')
 }
 
@@ -328,6 +437,9 @@ const collectBerry = (berryId: string) => {
 
   const berry = state.berries[idx]
   state.foodStock += berry.value
+  if (state.currentDiaryDay) {
+    state.currentDiaryDay.totalFoodCollected += berry.value
+  }
   state.berries.splice(idx, 1)
   return berry.value
 }
@@ -342,6 +454,8 @@ const feedBird = (birdId: string, amount: number): boolean => {
   bird.feedingCount++
   bird.lastFedAt = Date.now()
   bird.justFed = true
+
+  addDiaryEvent('feed', `喂食了 ${bird.name} (+${amount} 食物)`, bird.name)
 
   if (bird.fear > 20) {
     const fearReduce = bird.personality === 'shy' ? 3 : bird.personality === 'gentle' ? 5 : 4
@@ -397,6 +511,7 @@ const keepAndBreed = () => {
     state.birds.push(createEgg(state.birds.length))
   }
 
+  addDiaryEvent('breeding', `成鸟们产下了 ${newEggCount} 颗新蛋！第 ${state.breedingCount} 窝`)
   addEventLog(`💝 成鸟们产下了 ${newEggCount} 颗新蛋！第 ${state.breedingCount} 窝`, 'success')
   state.phase = 'playing'
 }
@@ -456,6 +571,11 @@ const endGame = (_reason: string) => {
   stopGameLoop()
   state.phase = 'ended'
   state.score = calculateScore()
+  if (state.currentDiaryDay) {
+    finalizeDiaryDay(state.currentDiaryDay)
+  }
+  const record = buildDiaryRecord()
+  saveDiaryRecord(record)
   addEventLog('🎮 游戏结束', 'info')
   saveGame(state)
 }
@@ -506,5 +626,6 @@ export function useGameState() {
     tryLoadGame,
     allAdults,
     aliveCount,
+    loadDiaryRecords,
   }
 }
