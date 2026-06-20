@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameState } from '@/composables/useGameState'
 import type { DiaryRecord, DiaryDay, DiaryEventType } from '@/types/game'
@@ -12,12 +12,15 @@ const records = ref<DiaryRecord[]>([])
 const selectedRecordId = ref<string | null>(null)
 const expandedDays = ref<Set<number>>(new Set())
 
-onMounted(() => {
+const refreshRecords = () => {
   records.value = loadDiaryRecords()
-  if (records.value.length > 0) {
+  if (records.value.length > 0 && (!selectedRecordId.value || !records.value.find(r => r.id === selectedRecordId.value))) {
     selectedRecordId.value = records.value[0].id
   }
-})
+}
+
+onMounted(refreshRecords)
+onActivated(refreshRecords)
 
 const selectedRecord = computed(() => {
   return records.value.find(r => r.id === selectedRecordId.value) || null

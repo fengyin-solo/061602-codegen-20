@@ -1,4 +1,5 @@
 import type { GameState, DiaryRecord } from '@/types/game'
+import type { GamePhase } from '@/types/game'
 
 const STORAGE_KEY = 'virtual-bird-nest-save'
 const DIARY_STORAGE_KEY = 'virtual-bird-nest-diaries'
@@ -27,6 +28,31 @@ export const clearSave = (): void => {
     localStorage.removeItem(STORAGE_KEY)
   } catch (e) {
     console.warn('清除存档失败', e)
+  }
+}
+
+export interface SaveMeta {
+  exists: boolean
+  phase?: GamePhase
+  day?: number
+  aliveCount?: number
+  totalHatched?: number
+}
+
+export const getSaveMeta = (): SaveMeta => {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY)
+    if (!data) return { exists: false }
+    const parsed = JSON.parse(data) as GameState
+    return {
+      exists: parsed.phase === 'playing' || parsed.phase === 'breeding',
+      phase: parsed.phase,
+      day: parsed.day,
+      aliveCount: parsed.birds?.filter(b => !b.isDead).length,
+      totalHatched: parsed.totalHatched,
+    }
+  } catch {
+    return { exists: false }
   }
 }
 

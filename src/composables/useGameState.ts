@@ -10,7 +10,7 @@ import {
   MAX_BREEDING_ROUNDS, BIRD_NAMES,
 } from '@/utils/constants'
 import { randomInt, randomFloat, clamp, randomChoice, generateId, chance } from '@/utils/random'
-import { saveGame, loadGame, clearSave, saveDiaryRecord, loadDiaryRecords, clearDiaryRecords } from '@/utils/storage'
+import { saveGame, loadGame, clearSave, saveDiaryRecord, loadDiaryRecords, clearDiaryRecords, getSaveMeta } from '@/utils/storage'
 
 const createInitialState = (): GameState => ({
   phase: 'start',
@@ -591,6 +591,11 @@ const returnToStart = () => {
   clearSave()
 }
 
+const pauseGame = () => {
+  stopGameLoop()
+  saveGame(state)
+}
+
 const tryLoadGame = (): boolean => {
   const saved = loadGame()
   if (saved && saved.phase === 'playing' || saved?.phase === 'breeding') {
@@ -623,9 +628,11 @@ export function useGameState() {
     keepAndBreed,
     restartGame,
     returnToStart,
+    pauseGame,
     tryLoadGame,
     allAdults,
     aliveCount,
     loadDiaryRecords,
+    getSaveMeta,
   }
 }

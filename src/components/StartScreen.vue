@@ -1,20 +1,31 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted, onActivated } from 'vue'
 import { useGameState } from '@/composables/useGameState'
 import type { DiaryRecord } from '@/types/game'
+import type { SaveMeta } from '@/utils/storage'
 
 const router = useRouter()
-const { startGame, tryLoadGame, state, loadDiaryRecords } = useGameState()
+const { startGame, tryLoadGame, state, loadDiaryRecords, getSaveMeta } = useGameState()
 
-const hasSave = computed(() => state.phase === 'playing' || state.phase === 'breeding')
+const saveMeta = reactive<SaveMeta>({ exists: false })
 const diaryRecords = ref<DiaryRecord[]>([])
-const hasDiary = computed(() => diaryRecords.value.length > 0)
 
-onMounted(() => {
-  tryLoadGame()
+const refreshHomeState = () => {
+  const meta = getSaveMeta()
+  saveMeta.exists = meta.exists
+  saveMeta.phase = meta.phase
+  saveMeta.day = meta.day
+  saveMeta.aliveCount = meta.aliveCount
+  saveMeta.totalHatched = meta.totalHatched
   diaryRecords.value = loadDiaryRecords()
-})
+  if (meta.exists && state.phase === 'start') {
+    tryLoadGame()
+  }
+}
+
+onMounted(refreshHomeState)
+onActivated(refreshHomeState)
 
 const handleStart = () => {
   startGame()
@@ -22,6 +33,9 @@ const handleStart = () => {
 }
 
 const handleContinue = () => {
+  if (state.phase !== 'playing' && state.phase !== 'breeding') {
+    tryLoadGame()
+  }
   router.push('/game')
 }
 
@@ -50,14 +64,14 @@ const handleDiary = () => {
         <p class="text-forest-light/90 text-xl font-medium">超休闲·养成小游戏</p>
       </div>
 
-      <div v-if="hasSave" class="glass rounded-3xl p-5 card-shadow animate-pop-in mb-4 border-2 border-amber-400/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10">
+      <div v-if="saveMeta.exists" class="glass rounded-3xl p-5 card-shadow animate-pop-in mb-4 border-2 border-amber-400/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10">
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-3">
             <div class="text-4xl">📂</div>
             <div>
               <div class="text-amber-200 font-bold text-lg">检测到未完成的游戏</div>
               <div class="text-white/60 text-sm">
-                第 {{ state.day }} 天 · 存活 {{ state.birds.filter(b => !b.isDead).length }} 只 · 孵化 {{ state.totalHatched }} 只
+                第 {{ saveMeta.day }} 天 · 存活 {{ saveMeta.aliveCount ?? 0 }} 只 · 孵化 {{ saveMeta.totalHatched ?? 0 }} 只
               </div>
             </div>
           </div>
@@ -117,7 +131,7 @@ const handleDiary = () => {
 
         <div class="flex flex-col sm:flex-row gap-3 justify-center">
           <button
-            v-if="hasSave"
+            v-if="saveMeta.exists"
             class="px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-2xl
                    font-bold text-lg btn-3d hover:from-amber-400 hover:to-orange-400 flex items-center justify-center gap-2"
             @click="handleContinue"
@@ -132,7 +146,7 @@ const handleDiary = () => {
             @click="handleStart"
           >
             <span class="text-xl">🪺</span>
-            {{ hasSave ? '开启新的一窝' : '开始孵蛋！' }}
+            {{ saveMeta.exists ? '开启新的一窝' : '开始孵蛋！' }}
           </button>
 
           <button
@@ -143,7 +157,7 @@ const handleDiary = () => {
             <span class="text-xl">📔</span>
             守巢日记
             <span
-              v-if="hasDiary"
+              v-if="diaryRecords.length > 0"
               class="absolute -top-2 -right-2 bg-rose-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold animate-pulse"
             >
               {{ diaryRecords.length }}

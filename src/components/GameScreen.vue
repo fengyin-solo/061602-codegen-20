@@ -13,7 +13,7 @@ const router = useRouter()
 const {
   state, allAdults, aliveCount,
   collectBerry, feedBird, calmBird, buryBird,
-  releaseBirds, keepAndBreed, returnToStart, tryLoadGame,
+  releaseBirds, keepAndBreed, returnToStart, tryLoadGame, pauseGame,
 } = useGameState()
 
 onMounted(() => {
@@ -105,7 +105,7 @@ const handleCollect = (id: string) => {
       <div class="flex justify-center gap-3">
         <button
           class="px-4 py-2 glass rounded-xl text-white/80 text-sm hover:bg-white/20 transition-all flex items-center gap-1.5"
-          @click="returnToStart(); router.push('/')"
+          @click="pauseGame(); router.push('/')"
         >
           <span>🏠</span> 返回主页
         </button>
